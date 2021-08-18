@@ -19,7 +19,8 @@ def make_model_pretrain(shape=(256, 256, 3),
                         dropout=0.3, activation='relu', 
                         model_name='vgg',
                        comp=False,
-                       concat=True):
+                       concat=True,
+                       out_dim=1):
     
     inp = tf.keras.layers.Input([256, 256, 3], dtype = tf.float32)    
     if model_name == 'vgg':
@@ -69,7 +70,10 @@ def make_model_pretrain(shape=(256, 256, 3),
     x = dense_block(512, dropout=dropout, activation=activation, name='fc2')(x)
     x = dense_block(64, dropout=dropout, activation=activation, name='fc3')(x)
     #     x = dense_block(64, dropout=0.25, activation='relu', name='fc3')(x)
-    x = Dense(1, activation='sigmoid')(x)
+    if out_dim == 1:
+        x = Dense(out_dim, activation='sigmoid')(x)
+    else:
+        x = Dense(out_dim, activation='softmax')(x)
 
     model = Model(inp, x)
 
@@ -88,14 +92,15 @@ def make_model_pretrain(shape=(256, 256, 3),
                       metrics=['accuracy'])
     return model
 
-def make_model(model_name, concat=False):
+def make_model(model_name, concat=False, len_data=814, out_dim=1):
     epochs = 100
     batch_size = 16
     image_size=(256, 256)
     init_lr = 1e-4
-    model = make_model_pretrain(model_name=model_name, concat=concat)
+    model = make_model_pretrain(model_name=model_name,
+                                concat=concat, out_dim=out_dim)
     
-    steps_per_epoch = 814 // batch_size
+    steps_per_epoch = len_data // batch_size
     num_train_steps = steps_per_epoch * epochs
     num_warmup_steps = int(0.1*num_train_steps)
 
@@ -106,7 +111,7 @@ def make_model(model_name, concat=False):
 
     model.compile(optimizer=optimizer,
                   loss='binary_crossentropy',
-                  metrics=['accuracy', keras.metrics.AUC()])
+                  metrics=['accuracy'])
     return model
 
 class FixedImageDataGenerator(ImageDataGenerator):
@@ -114,3 +119,75 @@ class FixedImageDataGenerator(ImageDataGenerator):
         if self.featurewise_center:
             x = ((x/255.) - 0.5) * 2.
         return x
+    
+def train_model(concat, normalize, model_name, save_path, data=csv, seeds=[1, 11, 111, 1111, 1004], test_size=0.2):
+    histories = []
+    epochs = 100
+    batch_size = 32
+    image_size=(256, 256)
+    init_lr = 1e-4
+    for i in range(5):
+        train, val = train_test_split(data, test_size=test_size, random_state=seeds[i], stratify=data['class'])
+
+        train_datagen = FixedImageDataGenerator(
+        #Your code here. Should at least have a rescale. Other parameters can help with overfitting
+            featurewise_center=True if normalize else False,
+            featurewise_std_normalization=True if normalize else False,
+            brightness_range=[0.8, 1.2],
+            width_shift_range=0.05,
+            horizontal_flip=True,
+            rescale=1./255
+        )
+        steps_per_epoch = len(train) // batch_size
+        num_train_steps = steps_per_epoch * epochs
+        num_warmup_steps = int(0.1*num_train_steps)
+
+        train_generator = train_datagen.flow_from_dataframe(
+           train,
+            target_size=image_size,
+            batch_size=batch_size,
+        )
+
+
+        val_datagen = FixedImageDataGenerator(
+        #Your code here. Should at least have a rescale. Other parameters can help with overfitting
+            featurewise_center=True,
+            featurewise_std_normalization=True,
+            rescale=1./255
+        )
+
+        val_generator = val_datagen.flow_from_dataframe(
+           val,
+            target_size=image_size,
+            batch_size=batch_size,
+        )
+        model = make_model_pretrain(dropout=0.3, activation='relu', 
+                                    model_name=model_name, concat=concat,
+                                   out_dim=5)
+    #     model = make_model((256, 256, 3))
+        optimizer = optimization.create_optimizer(init_lr=init_lr,
+                                                  num_train_steps=num_train_steps,
+                                                  num_warmup_steps=num_warmup_steps,
+                                                  optimizer_type='adamw')
+
+        model.compile(optimizer=optimizer,
+                      loss='categorical_crossentropy',
+                      metrics=['accuracy'])
+        # log_dir = "logs/dense169_relu"
+        # tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
+    #     s_callback = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=10)
+        checkpoint = tf.keras.callbacks.ModelCheckpoint(save_path+'/model_{0}_{1}.h5'.format(model_name, i), 
+                                     verbose=2, monitor='val_accuracy',save_best_only=True, mode='auto')  
+        es_callback = tf.keras.callbacks.EarlyStopping(
+            monitor='val_accuracy',
+            patience=30,
+            verbose=0,
+            mode='auto',
+            restore_best_weights=True
+        )
+        history = model.fit(train_generator, 
+                            validation_data=val_generator, 
+                            epochs=100, 
+                            callbacks=[checkpoint,es_callback])
+        histories.append(history)
+    return histories
