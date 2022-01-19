@@ -3,6 +3,7 @@ from official.nlp import optimization
 from tensorflow.keras.layers import BatchNormalization, Dense, Input, Conv2D, Activation, Dropout, MaxPooling2D, GlobalAveragePooling2D, Flatten, Concatenate
 import tensorflow as tf
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from sklearn.model_selection import train_test_split
 
 def dense_block(units, dropout=0.2, activation='relu', name='fc1'):
 
@@ -18,7 +19,6 @@ def dense_block(units, dropout=0.2, activation='relu', name='fc1'):
 def make_model_pretrain(shape=(256, 256, 3), 
                         dropout=0.3, activation='relu', 
                         model_name='vgg',
-                       comp=False,
                        concat=True,
                        out_dim=1):
     
@@ -76,20 +76,6 @@ def make_model_pretrain(shape=(256, 256, 3),
         x = Dense(out_dim, activation='softmax')(x)
 
     model = Model(inp, x)
-
-    if comp:
-        lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
-        0.0001,
-        decay_steps=250,
-        decay_rate=0.96,
-        staircase=True)
-
-        opt = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
-        # loss = tf.keras.losses.binary_crossentropy
-
-        model.compile(optimizer=opt,
-                      loss='binary_crossentropy',
-                      metrics=['accuracy'])
     return model
 
 def make_model(model_name, concat=False, len_data=814, out_dim=1):
@@ -110,7 +96,7 @@ def make_model(model_name, concat=False, len_data=814, out_dim=1):
                                               optimizer_type='adamw')
 
     model.compile(optimizer=optimizer,
-                  loss='binary_crossentropy',
+                  loss='categorical_crossentropy',
                   metrics=['accuracy'])
     return model
 
@@ -120,15 +106,17 @@ class FixedImageDataGenerator(ImageDataGenerator):
             x = ((x/255.) - 0.5) * 2.
         return x
     
-def train_model(concat, normalize, model_name, save_path, data=csv, seeds=[1, 11, 111, 1111, 1004], test_size=0.2):
+def train_model(concat, normalize, model_name, save_path, data, init_lr=1e-4, batch_size=32,
+                epochs=100, seeds=[1, 11, 111, 1111, 1004], test_size=0.2, out_dim=5):
     histories = []
-    epochs = 100
-    batch_size = 32
     image_size=(256, 256)
-    init_lr = 1e-4
     for i in range(5):
         train, val = train_test_split(data, test_size=test_size, random_state=seeds[i], stratify=data['class'])
-
+        
+        steps_per_epoch = len(train) // batch_size
+        num_train_steps = steps_per_epoch * epochs
+        num_warmup_steps = int(0.1*num_train_steps)
+        
         train_datagen = FixedImageDataGenerator(
         #Your code here. Should at least have a rescale. Other parameters can help with overfitting
             featurewise_center=True if normalize else False,
@@ -138,10 +126,6 @@ def train_model(concat, normalize, model_name, save_path, data=csv, seeds=[1, 11
             horizontal_flip=True,
             rescale=1./255
         )
-        steps_per_epoch = len(train) // batch_size
-        num_train_steps = steps_per_epoch * epochs
-        num_warmup_steps = int(0.1*num_train_steps)
-
         train_generator = train_datagen.flow_from_dataframe(
            train,
             target_size=image_size,
@@ -163,8 +147,7 @@ def train_model(concat, normalize, model_name, save_path, data=csv, seeds=[1, 11
         )
         model = make_model_pretrain(dropout=0.3, activation='relu', 
                                     model_name=model_name, concat=concat,
-                                   out_dim=5)
-    #     model = make_model((256, 256, 3))
+                                   out_dim=out_dim)
         optimizer = optimization.create_optimizer(init_lr=init_lr,
                                                   num_train_steps=num_train_steps,
                                                   num_warmup_steps=num_warmup_steps,
@@ -175,19 +158,18 @@ def train_model(concat, normalize, model_name, save_path, data=csv, seeds=[1, 11
                       metrics=['accuracy'])
         # log_dir = "logs/dense169_relu"
         # tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
-    #     s_callback = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=10)
         checkpoint = tf.keras.callbacks.ModelCheckpoint(save_path+'/model_{0}_{1}.h5'.format(model_name, i), 
                                      verbose=2, monitor='val_accuracy',save_best_only=True, mode='auto')  
-        es_callback = tf.keras.callbacks.EarlyStopping(
-            monitor='val_accuracy',
-            patience=30,
-            verbose=0,
-            mode='auto',
-            restore_best_weights=True
-        )
+#         es_callback = tf.keras.callbacks.EarlyStopping(
+#             monitor='val_accuracy',
+#             patience=30,
+#             verbose=0,
+#             mode='auto',
+#             restore_best_weights=True
+#         )
         history = model.fit(train_generator, 
                             validation_data=val_generator, 
-                            epochs=100, 
-                            callbacks=[checkpoint,es_callback])
+                            epochs=epochs, 
+                            callbacks=[checkpoint])
         histories.append(history)
     return histories
