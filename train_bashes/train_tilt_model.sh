@@ -1,0 +1,3 @@
+python train_tilt_model.py --gpu_id 0 --model vgg --save_path /mnt/hdd/spow12/work/fundus/fundus_paper/model_weights/tilt_classification/
+python train_tilt_model.py --gpu_id 0 --model dense121 --save_path /mnt/hdd/spow12/work/fundus/fundus_paper/model_weights/tilt_classification/
+python train_tilt_model.py --gpu_id 0 --model vgg16 --save_path /mnt/hdd/spow12/work/fundus/fundus_paper/model_weights/tilt_classification/

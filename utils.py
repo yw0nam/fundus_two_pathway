@@ -3,8 +3,9 @@ from official.nlp import optimization
 from tensorflow.keras.layers import BatchNormalization, Dense, Input, Conv2D, Activation, Dropout, MaxPooling2D, GlobalAveragePooling2D, Flatten, Concatenate
 import tensorflow as tf
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
-from sklearn.model_selection import train_test_split
-
+from tensorflow.keras import metrics
+from sklearn.model_selection import StratifiedKFold
+import pandas as pd
 def dense_block(units, dropout=0.2, activation='relu', name='fc1'):
 
     def layer_wrapper(inp):
@@ -97,7 +98,7 @@ def make_model(model_name, concat=False, len_data=814, out_dim=1):
 
     model.compile(optimizer=optimizer,
                   loss='categorical_crossentropy',
-                  metrics=['accuracy'])
+                  metrics=['accuracy', metrics.AUC])
     return model
 
 class FixedImageDataGenerator(ImageDataGenerator):
@@ -107,15 +108,28 @@ class FixedImageDataGenerator(ImageDataGenerator):
         return x
     
 def train_model(concat, normalize, model_name, save_path, data, init_lr=1e-4, batch_size=32,
-                epochs=100, seeds=[1, 11, 111, 1111, 1004], test_size=0.2, out_dim=5):
+                epochs=100, out_dim=5, n_fold=5):
     histories = []
     image_size=(256, 256)
-    for i in range(5):
-        train, val = train_test_split(data, test_size=test_size, random_state=seeds[i], stratify=data['class'])
+    skf = StratifiedKFold(n_splits=n_fold,
+                          random_state=1004, shuffle=True)
+    
+    for cv_idx, data_index in enumerate(skf.split(data['filename'], data['class'])):
+        train_index, val_index = data_index[0], data_index[1]
+        train_image, val_image = data['filename'][train_index], data['filename'][val_index]
+        train_label, val_label = data['class'][train_index], data['class'][val_index]
         
-        steps_per_epoch = len(train) // batch_size
+        steps_per_epoch = len(train_image) // batch_size
         num_train_steps = steps_per_epoch * epochs
         num_warmup_steps = int(0.1*num_train_steps)
+        
+        train = pd.DataFrame({"filename": train_image,
+                      "class": train_label})
+        train['class'] = train['class'].astype(str)
+        
+        val = pd.DataFrame({"filename": val_image,
+                              "class": val_label})
+        val['class'] = val['class'].astype(str)
         
         train_datagen = FixedImageDataGenerator(
         #Your code here. Should at least have a rescale. Other parameters can help with overfitting
@@ -127,7 +141,7 @@ def train_model(concat, normalize, model_name, save_path, data, init_lr=1e-4, ba
             rescale=1./255
         )
         train_generator = train_datagen.flow_from_dataframe(
-           train,
+            train,
             target_size=image_size,
             batch_size=batch_size,
         )
@@ -141,7 +155,7 @@ def train_model(concat, normalize, model_name, save_path, data, init_lr=1e-4, ba
         )
 
         val_generator = val_datagen.flow_from_dataframe(
-           val,
+            val,
             target_size=image_size,
             batch_size=batch_size,
         )
@@ -155,10 +169,10 @@ def train_model(concat, normalize, model_name, save_path, data, init_lr=1e-4, ba
 
         model.compile(optimizer=optimizer,
                       loss='categorical_crossentropy',
-                      metrics=['accuracy'])
+                      metrics=['accuracy', ])
         # log_dir = "logs/dense169_relu"
         # tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
-        checkpoint = tf.keras.callbacks.ModelCheckpoint(save_path+'/model_{0}_{1}.h5'.format(model_name, i), 
+        checkpoint = tf.keras.callbacks.ModelCheckpoint(save_path+'/model_{0}_{1}.h5'.format(model_name, cv_idx), 
                                      verbose=2, monitor='val_accuracy',save_best_only=True, mode='auto')  
 #         es_callback = tf.keras.callbacks.EarlyStopping(
 #             monitor='val_accuracy',
@@ -173,3 +187,4 @@ def train_model(concat, normalize, model_name, save_path, data, init_lr=1e-4, ba
                             callbacks=[checkpoint])
         histories.append(history)
     return histories
+
