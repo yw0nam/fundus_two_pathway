@@ -21,7 +21,7 @@ def make_model_pretrain(shape=(256, 256, 3),
                         dropout=0.3, activation='relu', 
                         model_name='vgg',
                        concat=True,
-                       out_dim=1):
+                       out_dim=1, multi_task=False):
     
     inp = tf.keras.layers.Input([256, 256, 3], dtype = tf.float32)    
     if model_name == 'vgg':
@@ -71,21 +71,29 @@ def make_model_pretrain(shape=(256, 256, 3),
     x = dense_block(512, dropout=dropout, activation=activation, name='fc2')(x)
     x = dense_block(64, dropout=dropout, activation=activation, name='fc3')(x)
     #     x = dense_block(64, dropout=0.25, activation='relu', name='fc3')(x)
-    if out_dim == 1:
-        x = Dense(out_dim, activation='sigmoid')(x)
+    if multi_task:
+        x_tilt = Dense(2, activation='softmax', name='y_tilt')(x)
+        x_disease = Dense(out_dim, activation='softmax', name='y_disease')(x)
+        x = [x_tilt, x_disease]
     else:
-        x = Dense(out_dim, activation='softmax')(x)
+        if out_dim == 1:
+            x = Dense(out_dim, activation='sigmoid')(x)
+        else:
+            x = Dense(out_dim, activation='softmax')(x)
 
     model = Model(inp, x)
     return model
 
-def make_model(model_name, concat=False, len_data=814, out_dim=1):
+def make_model(model_name, concat=False, 
+               len_data=814, out_dim=1,
+               multi_task=False):
     epochs = 100
     batch_size = 16
     image_size=(256, 256)
     init_lr = 1e-4
     model = make_model_pretrain(model_name=model_name,
-                                concat=concat, out_dim=out_dim)
+                                concat=concat, out_dim=out_dim,
+                                multi_task=multi_task)
     
     steps_per_epoch = len_data // batch_size
     num_train_steps = steps_per_epoch * epochs
@@ -97,8 +105,8 @@ def make_model(model_name, concat=False, len_data=814, out_dim=1):
                                               optimizer_type='adamw')
 
     model.compile(optimizer=optimizer,
-                  loss='categorical_crossentropy',
-                  metrics=['accuracy', metrics.AUC])
+                  loss=tf.keras.losses.BinaryCrossentropy(from_logits=True),
+                  metrics=['accuracy'])
     return model
 
 class FixedImageDataGenerator(ImageDataGenerator):
@@ -108,7 +116,7 @@ class FixedImageDataGenerator(ImageDataGenerator):
         return x
     
 def train_model(concat, normalize, model_name, save_path, data, init_lr=1e-4, batch_size=32,
-                epochs=100, out_dim=5, n_fold=5):
+                epochs=100, out_dim=4, n_fold=5, class_weight=None, multi_task=False):
     histories = []
     image_size=(256, 256)
     skf = StratifiedKFold(n_splits=n_fold,
@@ -118,18 +126,23 @@ def train_model(concat, normalize, model_name, save_path, data, init_lr=1e-4, ba
         train_index, val_index = data_index[0], data_index[1]
         train_image, val_image = data['filename'][train_index], data['filename'][val_index]
         train_label, val_label = data['class'][train_index], data['class'][val_index]
+        train_tilt_label, val_tilt_label = data['tilt'][train_index], data['tilt'][val_index]
         
         steps_per_epoch = len(train_image) // batch_size
         num_train_steps = steps_per_epoch * epochs
         num_warmup_steps = int(0.1*num_train_steps)
         
         train = pd.DataFrame({"filename": train_image,
-                      "class": train_label})
+                            "class": train_label,
+                            "tilt": train_tilt_label
+                            })
         train['class'] = train['class'].astype(str)
+        train['tilt'] = train['tilt'].astype(str)
         
         val = pd.DataFrame({"filename": val_image,
-                              "class": val_label})
-        val['class'] = val['class'].astype(str)
+                            "class": val_label,
+                            "tilt": val_tilt_label})
+        val['tilt'] = val['tilt'].astype(str)
         
         train_datagen = FixedImageDataGenerator(
         #Your code here. Should at least have a rescale. Other parameters can help with overfitting
@@ -144,6 +157,8 @@ def train_model(concat, normalize, model_name, save_path, data, init_lr=1e-4, ba
             train,
             target_size=image_size,
             batch_size=batch_size,
+            y_col=['tilt', 'class'] if multi_task else 'class',
+            class_mode='multi_output' if multi_task else 'categorical'
         )
 
 
@@ -158,33 +173,54 @@ def train_model(concat, normalize, model_name, save_path, data, init_lr=1e-4, ba
             val,
             target_size=image_size,
             batch_size=batch_size,
+            y_col=['tilt', 'class'] if multi_task else 'class',
+            class_mode='multi_output' if multi_task else 'categorical'
         )
         model = make_model_pretrain(dropout=0.3, activation='relu', 
                                     model_name=model_name, concat=concat,
-                                   out_dim=out_dim)
+                                   out_dim=out_dim, multi_task=multi_task)
         optimizer = optimization.create_optimizer(init_lr=init_lr,
                                                   num_train_steps=num_train_steps,
                                                   num_warmup_steps=num_warmup_steps,
                                                   optimizer_type='adamw')
 
-        model.compile(optimizer=optimizer,
-                      loss='categorical_crossentropy',
-                      metrics=['accuracy', ])
-        # log_dir = "logs/dense169_relu"
-        # tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
-        checkpoint = tf.keras.callbacks.ModelCheckpoint(save_path+'/model_{0}_{1}.h5'.format(model_name, cv_idx), 
-                                     verbose=2, monitor='val_accuracy',save_best_only=True, mode='auto')  
-#         es_callback = tf.keras.callbacks.EarlyStopping(
-#             monitor='val_accuracy',
-#             patience=30,
-#             verbose=0,
-#             mode='auto',
-#             restore_best_weights=True
-#         )
-        history = model.fit(train_generator, 
-                            validation_data=val_generator, 
-                            epochs=epochs, 
-                            callbacks=[checkpoint])
+        checkpoint = tf.keras.callbacks.ModelCheckpoint(save_path+'/model_{0}_{1}.h5'.format(model_name, cv_idx),
+                                                        verbose=2, monitor='val_accuracy', save_best_only=True, mode='auto')
+        
+        if multi_task:
+            model.compile(optimizer=optimizer,
+                loss={'y_tilt' :'categorical_crossentropy',
+                    'y_disease': 'categorical_crossentropy'},
+                metrics=['accuracy'])
+        else:
+            model.compile(optimizer=optimizer,
+                        loss='categorical_crossentropy',
+                        metrics=['accuracy'])
+    
+
+        if multi_task:
+            history = model.fit(
+                get_data_from_generator(train_generator),
+                validation_data=get_data_from_generator(val_generator),
+                steps_per_epoch=len(train_generator) // batch_size,
+                validation_steps=len(val_generator) // batch_size,
+                epochs=epochs, 
+                callbacks=[checkpoint],
+            )
+        else:
+            history = model.fit(
+                train_generator,
+                validation_data=val_generator,
+                epochs=epochs,
+                callbacks=[checkpoint],
+                class_weight=class_weight
+            )
         histories.append(history)
     return histories
 
+
+def get_data_from_generator(generator, out_dim=[2, 4]):
+    while(True):
+        data = next(generator)
+        yield data[0], {'y_tilt': tf.one_hot(data[1][0], depth=out_dim[0]),
+                        'y_disease': tf.one_hot(data[1][1], depth=out_dim[1])}
