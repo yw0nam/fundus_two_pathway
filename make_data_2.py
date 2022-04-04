@@ -55,12 +55,23 @@ non_tilt_normal = glob('/mnt/hdd/spow12/work/fundus/images/2020_12_21/non */*')
 tilt_normal = glob('/mnt/hdd/spow12/work/fundus/images/2020_12_21/tilted/*')
 # %%
 dict_ls += sm_make_dict(non_tilt_normal, 0, 'N')
-dict_ls += sm_make_dict(non_tilt, 1, 'N')
+# OH MY GOD
+# dict_ls += sm_make_dict(non_tilt, 1, 'N')
+dict_ls += sm_make_dict(tilt_normal, 1, 'N')
 # %%
 df = pd.DataFrame(dict_ls)
 # %%
-df
+with open('./error.txt', 'r') as f:
+    errors = f.readlines()
+# %%
+indexs = []
+for error in errors:
+    indexs += df[df['filename'].map(lambda x: error[:-1] in x)].index.to_list()
+df = df.query("index not in @indexs")
 # %%
 df['class'] = df['class'].replace({'N': 0, 'G' : 1, 'P' : 2, 'S':3})
-df.to_csv('./data_2022_01_19.csv', index=False)
+df.to_csv('./data/data_2022_01_19.csv', index=False)
+# %%
+import shutil
+df['filename'].map(lambda x: shutil.copy(x, './images/%s'%os.path.basename(x)))
 # %%

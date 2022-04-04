@@ -118,7 +118,7 @@ class FixedImageDataGenerator(ImageDataGenerator):
 def train_model(concat, normalize, model_name, save_path, data, init_lr=1e-4, batch_size=32,
                 epochs=100, out_dim=4, n_fold=5, class_weight=None, multi_task=False):
     histories = []
-    image_size=(256, 256)
+    image_size=(224, 224)
     skf = StratifiedKFold(n_splits=n_fold,
                           random_state=1004, shuffle=True)
     

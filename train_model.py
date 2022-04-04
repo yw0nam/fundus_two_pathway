@@ -1,13 +1,8 @@
 # %%
-from sklearn.model_selection import StratifiedKFold
 from utils import *
 import tensorflow as tf
-import numpy as np
 import pandas as pd
-import tensorflow.keras as keras
-from official.nlp import optimization
 from sklearn.model_selection import train_test_split
-import matplotlib.pyplot as plt
 import argparse, pickle
 
 # %%
@@ -27,6 +22,7 @@ if gpus:
 
 csv = pd.read_csv('./data/data_2022_01_19.csv')
 csv['class'] = csv['class'].astype(str)
+csv['filename'] = csv['filename'].map(lambda x: x[:-4]+'_cropped.jpg')
 
 csv, test = train_test_split(csv, test_size=0.2, 
                              random_state=1004, 
@@ -34,22 +30,22 @@ csv, test = train_test_split(csv, test_size=0.2,
 
 csv_tilt = csv[csv['tilt'] == 1]
 csv_not_tilt = csv[csv['tilt'] == 0]
-
+# %%
 if args.type == 'all':
-    save_path = '/mnt/hdd/spow12/work/fundus/fundus_paper/model_weights/model_all/'
+    save_path = '/mnt/hdd/spow12/work/fundus/fundus_paper/model_weights/disease_classification/model_all/'
     use_csv = csv
 elif args.type == 'tilt':
-    save_path = '/mnt/hdd/spow12/work/fundus/fundus_paper/model_weights/model_tilt/'
+    save_path = '/mnt/hdd/spow12/work/fundus/fundus_paper/model_weights/disease_classification/model_tilt/'
     use_csv = csv_tilt
 elif args.type == 'non_tilt':
-    save_path = '/mnt/hdd/spow12/work/fundus/fundus_paper/model_weights/model_non_tilt/'
+    save_path = '/mnt/hdd/spow12/work/fundus/fundus_paper/model_weights/disease_classification/model_non_tilt/'
     use_csv = csv_not_tilt
 else:
     raise 'NonValidDataError'
     
 
 use_csv = use_csv.reset_index(drop=True)
-histories = train_model(concat=False, normalize=True, 
+histories = train_model(concat=True, normalize=True, 
                               save_path=save_path, data=use_csv,
                               model_name=args.model, out_dim=4, batch_size=args.batch_size,
                               multi_task=args.multi_task)
