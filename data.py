@@ -5,6 +5,9 @@ import numpy as np
 from utils import *
 # %%
 train = pd.read_csv('./data/data_2022_01_19.csv')
+train['sm'].value_counts()
+# %%
+
 train['class'] = train['class'].astype(str)
 train['tilt'] = train['tilt'].astype(str)
 # %%

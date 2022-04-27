@@ -185,7 +185,7 @@ def train_model(concat, normalize, model_name, save_path, data, init_lr=1e-4, ba
                                                   optimizer_type='adamw')
 
         checkpoint = tf.keras.callbacks.ModelCheckpoint(save_path+'/model_{0}_{1}.h5'.format(model_name, cv_idx),
-                                                        verbose=2, monitor='val_accuracy', save_best_only=True, mode='auto')
+                                                        verbose=2, monitor='val_loss', save_best_only=True, mode='auto')
         
         if multi_task:
             model.compile(optimizer=optimizer,

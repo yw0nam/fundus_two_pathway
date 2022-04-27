@@ -18,12 +18,15 @@ if gpus:
     tf.config.experimental.set_visible_devices(gpus[args.gpu_id], 'GPU')
     tf.config.experimental.set_memory_growth(gpus[args.gpu_id], True)
     
-csv = pd.read_csv('./data/data_2022_01_19.csv')
+csv = pd.read_csv('./data/data_2022_04_11_final.csv')
+csv['filename'] = csv['filename'].map(lambda x: x[:-4]+'_cropped.jpg')
+
 csv, _ = train_test_split(csv, test_size=0.2, 
                              random_state=1004, 
                              stratify=csv['class'])
 
 csv['class'] = csv['tilt'].astype(str)
+
 csv = csv.reset_index(drop=True)
 
 neg, pos = np.bincount(csv['class'])
