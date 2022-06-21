@@ -10,11 +10,11 @@ def print_evaluate_metrics(weight_pathes, data, dataset_name, model_names, out_d
         model = make_model(model_names[i], concat=concat, out_dim=out_dim)
         weight_path = weight_pathes+model_names[i]
         precision, recall, f1, acc, auc = cal_indexes(model, weight_path, data)
-        dict_ls.append({'precision': '%.4f' % np.mean(precision) + '±%.4f' % np.std(precision),
-                        'accuracy': '%.4f' % np.mean(acc) + '±%.4f' % np.std(acc),
-                        'recall': '%.4f' % np.mean(recall) + '±%.4f' % np.std(recall),
-                        'f1_score':  '%.4f' % np.mean(f1) + '±%.4f' % np.std(f1),
-                        'auc': '%.4f' % np.mean(auc) + '±%.4f' % np.std(auc),
+        dict_ls.append({'precision': '%.3f' % np.mean(precision) + '±%.3f' % np.std(precision),
+                        'accuracy': '%.3f' % np.mean(acc) + '±%.3f' % np.std(acc),
+                        'recall': '%.3f' % np.mean(recall) + '±%.3f' % np.std(recall),
+                        'f1_score':  '%.3f' % np.mean(f1) + '±%.3f' % np.std(f1),
+                        'auc': '%.3f' % np.mean(auc) + '±%.3f' % np.std(auc),
                         'model_name': model_names[i], 'dataset': dataset_name,
                         'training_data': training_data})
     return dict_ls
@@ -35,7 +35,7 @@ def cal_indexes(model, weight_path, data):
 
     val_generator = val_datagen.flow_from_dataframe(
         data,
-        target_size=(256, 256),
+        target_size=(224, 224),
         batch_size=1,
         shuffle=False
     )
@@ -52,4 +52,39 @@ def cal_indexes(model, weight_path, data):
         f1.append(f1_score(y_true, y_pred=pred, average='weighted'))
         acc.append(accuracy_score(y_true, pred))
         auc.append(roc_auc_score(tf.one_hot(y_true, 4).numpy(), prob_pred, multi_class='ovr'))
+    return precision, recall, f1, acc, auc
+
+
+def cal_metrics_from_proba(probs, data, dataset_name, model_names):
+    dict_ls = []
+    for i in range(3):
+        prob = probs[dataset_name]
+        precision, recall, f1, acc, auc = get_metrics(prob, data, model_names[i])
+        dict_ls.append({'precision': '%.4f' % np.mean(precision) + '±%.4f' % np.std(precision),
+                        'accuracy': '%.4f' % np.mean(acc) + '±%.4f' % np.std(acc),
+                        'recall': '%.4f' % np.mean(recall) + '±%.4f' % np.std(recall),
+                        'f1_score':  '%.4f' % np.mean(f1) + '±%.4f' % np.std(f1),
+                        'auc': '%.4f' % np.mean(auc) + '±%.4f' % np.std(auc),
+                        'model_name': model_names[i], 'dataset': dataset_name
+        })
+    return dict_ls
+
+def get_metrics(prob, data, model_name):
+    precision = []
+    f1 = []
+    recall = []
+    acc = []
+    auc = []
+    for i in range(5):
+        proba = prob[model_name][i]
+        y_true = data.copy()
+        y_true = y_true['class'].astype(int)
+        pred = np.argmax(proba, axis=1)
+        precision.append(precision_score(
+            y_true, y_pred=pred, average='weighted'))
+        recall.append(recall_score(y_true, y_pred=pred, average='weighted'))
+        f1.append(f1_score(y_true, y_pred=pred, average='weighted'))
+        acc.append(accuracy_score(y_true, pred))
+        auc.append(roc_auc_score(tf.one_hot(y_true, 4).numpy(),
+                   proba, multi_class='ovr'))
     return precision, recall, f1, acc, auc
