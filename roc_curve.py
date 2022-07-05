@@ -4,8 +4,6 @@ import pandas as pd
 from utils import *
 from tqdm import tqdm
 import numpy as np
-from sklearn.metrics import f1_score, accuracy_score, auc, classification_report, roc_curve
-from sklearn.metrics import recall_score, precision_score, RocCurveDisplay
 import os
 from sklearn.model_selection import train_test_split
 
@@ -32,7 +30,7 @@ csv_not_tilt = test[test['tilt'] == 0]
 curve_maker = cv_roc_curve()
 pred_dicts = {}
 
-# Front: Development, Behind: Test
+# Front: Modeling, Behind: Test
 
 path = '/mnt/hdd/spow12/work/fundus/fundus_paper/model_weights/disease_classification/model_non_tilt/model_'
 curve_maker.set_params_and_predict(data=csv_tilt,
@@ -89,8 +87,6 @@ curve_maker.set_params_and_predict(data=csv_not_tilt,
 curve_maker.draw_full_graph('./figures/Paper/roc/')
 pred_dicts['A_NT'] = curve_maker.pred_dicts
 
-# pred_dicts['All'] = curve_maker.pred_dicts
-
 # %%
 curve_maker.draw_full_graph('./figures/Paper/roc/')
 
@@ -103,45 +99,7 @@ with open('./data/test_proba_dual_2.pckl', 'wb') as fil:
 # %%
 with open('./data/test_proba_dual_2.pckl', 'rb') as f:
     temp = pickle.load(f)
-# %%
-temp['T_T']['DenseNet121'].shape
-# %%
 
-# %%
-y_true = tf.one_hot(csv_tilt['class'].astype(float), 4).numpy()
-y_pred = temp['T_T']['DenseNet121']
-# %%
-y_true
-# %%
-_, ax = plt.subplots()
-tprs = []
-aucs = []
-mean_fpr = np.linspace(0, 1, 100)
-
-viz = metrics.RocCurveDisplay.from_predictions(
-        y_true[:, 0], y_pred[0, :, 0], ax=ax, name="ROC fold %s" % 0)
-interp_tpr = np.interp(mean_fpr, viz.fpr, viz.tpr)
-interp_tpr[0] = 0.0
-tprs.append(interp_tpr)
-aucs.append(viz.roc_auc)
-# %%
-_, ax = plt.subplots()
-mean_fpr = np.linspace(0, 1, 100)
-mean_tpr = np.mean(tprs, axis=0)
-mean_tpr[-1] = 1.0
-mean_auc = metrics.auc(mean_fpr, mean_tpr)
-std_auc = np.std(aucs)
-
-ax.plot(
-    mean_fpr,
-    mean_tpr,
-    # color=color,
-    label=r"%s (AUC = %0.3f $\pm$ %0.3f)" % ('temp', mean_auc, std_auc),
-    lw=2,
-    alpha=0.8,
-)
-ax.legend(loc="lower right", prop={'size':25})
-plt.show()
 # %%
 def draw_roc_curve_respect_to_data(pred_dicts: dict, 
                                 label:int, 
