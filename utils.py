@@ -279,8 +279,9 @@ class cv_roc_curve:
         self.plot_model_names = plot_model_names
         self.colors = colors
 
-    def set_params_and_predict(self, data, dataset_name, root_path):
-        self.dataset_name = dataset_name
+    def set_params_and_predict(self, data, train_data_name, test_data_name, root_path):
+        self.train_data_name = train_data_name
+        self.test_data_name= test_data_name
         self.root_path = root_path
 
         val_datagen = FixedImageDataGenerator(
@@ -353,9 +354,9 @@ class cv_roc_curve:
 #         )
     def draw_full_graph(self, save_path):
         for model_name in self.plot_model_names:
-            fig, ax = plt.subplots(figsize=(12, 12))
-            plt.xticks(fontsize=16)
-            plt.yticks(fontsize=16)
+            fig, ax = plt.subplots(figsize=(12, 10))
+            plt.xticks(fontsize=25)
+            plt.yticks(fontsize=25)
             plt.xlabel("False Positive Rate", fontsize=25)
             plt.ylabel("True Positive Rate", fontsize=25)
             for i in range(4):
@@ -369,11 +370,13 @@ class cv_roc_curve:
             ax.set(
                 xlim=[-0.05, 1.05],
                 ylim=[-0.05, 1.05],
-                title="Dataset: %s  Model: %s" % (
-                    self.dataset_name, model_name),
+                # title="Train: %s  Test: %s" % (
+                #     self.train_data_name, self.test_data_name),
             )
-            ax.legend(loc="lower right", prop={'size': 20})
+            # fig.suptitle("Train: %s  Test: %s" % (self.train_data_name, 
+            #                                     self.test_data_name), fontsize=30)
+            ax.legend(loc="lower right", prop={'size':25})
             # plt.savefig('./figures/AI_all.png', facecolor='#eeeeee')
-            fig.savefig(os.path.join(save_path, "%s_%s.png" %
-                        (self.dataset_name, model_name)))
+            fig.savefig(os.path.join(save_path, "%s_%s_%s.png" %
+                        (self.train_data_name, self.test_data_name, model_name)))
             plt.show()
