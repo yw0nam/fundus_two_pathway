@@ -31,7 +31,7 @@ curve_maker = cv_roc_curve()
 pred_dicts = {}
 
 # Front: Modeling, Behind: Test
-
+# %%
 path = '/mnt/hdd/spow12/work/fundus/fundus_paper/model_weights/disease_classification/model_non_tilt/model_'
 curve_maker.set_params_and_predict(data=csv_tilt,
                                 train_data_name="Non tilted disc",
@@ -94,18 +94,18 @@ curve_maker.draw_full_graph('./figures/Paper/roc/')
 pred_dicts.keys()
 # %%
 import pickle
-with open('./data/test_proba_dual_2.pckl', 'wb') as fil:
-        pickle.dump(pred_dicts, fil)
+# with open('./data/test_proba_dual_2.pckl', 'wb') as fil:
+#         pickle.dump(pred_dicts, fil)
 # %%
 with open('./data/test_proba_dual_2.pckl', 'rb') as f:
-    temp = pickle.load(f)
+    pred_dicts = pickle.load(f)
 
 # %%
 def draw_roc_curve_respect_to_data(pred_dicts: dict, 
                                 label:int, 
                                 label_name: str,
                                 save_path: str,
-                                colors=['b', 'g', 'r', 'y']
+                                colors=['b', 'g', 'r']
                                 ):
     def get_cv_roc(y_true, y_pred):
         _, ax = plt.subplots()
@@ -121,7 +121,7 @@ def draw_roc_curve_respect_to_data(pred_dicts: dict,
             aucs.append(viz.roc_auc)
         return tprs, aucs
     
-    def draw_roc_graph(tprs, aucs, ax, name, color='b'):
+    def draw_roc_graph(tprs, aucs, ax, name, color='b', linestyle=None):
         mean_fpr = np.linspace(0, 1, 100)
         mean_tpr = np.mean(tprs, axis=0)
         mean_tpr[-1] = 1.0
@@ -133,6 +133,7 @@ def draw_roc_curve_respect_to_data(pred_dicts: dict,
             mean_tpr,
             color=color,
             label=r"%s (AUC = %0.3f $\pm$ %0.3f)" % (name, mean_auc, std_auc),
+            linestyle=linestyle,
             lw=2,
             alpha=0.8,
         )
@@ -143,13 +144,20 @@ def draw_roc_curve_respect_to_data(pred_dicts: dict,
     plt.xlabel("False Positive Rate", fontsize=25)
     plt.ylabel("True Positive Rate", fontsize=25)
     
-    for i, dev_name in enumerate(['T_T', 'NT_T', 'NT_NT', 'T_NT']):
+    for i, dev_name in enumerate(['A_NT','A_T', 'NT_NT', 'NT_T','T_NT', 'T_T']):
         y_pred = pred_dicts[dev_name]['DenseNet121']
-        y_true = csv_tilt if i <= 1 else csv_not_tilt
+        y_true = csv_not_tilt if i % 2 == 0 else csv_tilt
+        linestyle = None if i % 2 == 0 else '--'
         y_true = tf.one_hot(y_true['class'].astype(float), 4).numpy()
         
+        if i <= 1:
+            color = colors[0]
+        elif 1 < i  and i <=3:
+            color = colors[1]
+        else:
+            color = colors[2]
         tprs, aucs = get_cv_roc(y_true[:, label], y_pred[:, :, label])
-        draw_roc_graph(tprs, aucs, ax, dev_name, color=colors[i])
+        draw_roc_graph(tprs, aucs, ax, dev_name, color=color, linestyle=linestyle)
 
     ax.plot([0, 1], [0, 1], linestyle="--", lw=2, color="k", alpha=0.8)
     ax.set(

@@ -1,3 +1,4 @@
 data
 regacy
 figures/*
+__pycache__/*
